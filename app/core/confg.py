@@ -16,8 +16,9 @@ class Config:
         except json.JSONDecodeError:
             raise ValueError(f"Config file {self.path} contains invalid JSON.")
 
-    def get_api_key(self, key_type: str) -> Optional[str]:
-        return self._config.get("api_key", {}).get(key_type)
+    def get_api_key(self, key_type: str) :
+        print(key_type)
+        return self._config.get("api_key").get(key_type)
 
     def get(self, key: str, default=None):
         return self._config.get(key, default)

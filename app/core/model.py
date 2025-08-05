@@ -3,15 +3,13 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from app.core.confg import Config
 
 def get_chat_model(type,name):
-    try:
-
+        conf=Config()
         if type =="openai":
-                return ChatOpenAI(model=name,api_key=Config.get_api_key("openai"))
+                return ChatOpenAI(model=name,api_key=conf.get_api_key(key_type="openai"))
         elif type=="siliconflow":
-            return ChatOpenAI(base_url="https://api.siliconflow.cn/v1",api_key=Config.get_api_key("siliconflow"),model=name)
+            return ChatOpenAI(base_url="https://api.siliconflow.cn/v1",api_key=conf.get_api_key(key_type="siliconflow"),model=name)
         else:
             return "Unknown model type"
-    except:
-        return "have no this model"
 def get_embedding_model():
-    return OpenAIEmbeddings(model="Qwen/Qwen3-Embedding-8B",api_key=Config.get_api_key("siliconflow"),base_url="https://api.siliconflow.cn/v1")
+    conf=Config()
+    return OpenAIEmbeddings(model="Qwen/Qwen3-Embedding-8B",api_key=conf.get_api_key(key_type="siliconflow"),base_url="https://api.siliconflow.cn/v1")
