@@ -1,6 +1,13 @@
 # app/api/endpoints/vector.py
 
 """
+main.py
+# 导入并挂载路由
+from app.api.endpoints.vector import router as vector_router
+app.include_router(vector_router, prefix="/vector")
+"""
+
+"""
 # 1. add：upload_id 放在 query，file 用 -F 上传
 curl -v \
   -X POST "http://localhost:8000/vector/add?upload_id=sample01" \
@@ -18,6 +25,7 @@ curl -v \
 # 4. list：直接 GET
 curl -v http://localhost:8000/vector/list
 """
+
 from typing import Optional,List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -31,7 +39,7 @@ from app.embedding.embedder import Embedder
 from app.embedding.vector_store import VectorStore
 
 router = APIRouter()
-RAW_DOC_DIR = Path("./app/data/raw_documents")
+RAW_DOC_DIR = Path("./data/raw_documents")
 vs = VectorStore()
 
 @router.post("/add")
