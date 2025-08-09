@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from app.core.confg import Config
+from app.core.config import Config
 
 def get_chat_model(type,name):
         conf=Config()
