@@ -1,0 +1,37 @@
+# 向量数据库配置
+faiss:
+  index_path: "data/faiss_index"  # 索引存储路径
+  dimension: 1024  # 向量维度（BGE模型输出）
+  index_type: "IVF_FLAT"  # 索引类型
+
+# 嵌入模型配置
+embedding:
+  model_name: "BAAI/bge-large-zh-v1.5"  # 文本嵌入模型
+  max_seq_len: 512          # 最大序列长度
+
+# 大模型配置
+llm:
+  default_model: "qwen-plus"  # 默认模型（qwen-plus/llama3/gpt-4）
+  temperature: 0.3           # 温度参数（技术场景建议0.1-0.3）
+  max_tokens: 2048           # 最大生成token数
+  timeout: 15                # 模型调用超时时间（秒）
+
+# 检索配置
+retrieval:
+  top_k: 5                   # 默认返回检索结果数量
+  rerank_top_k: 3            # 重排序后保留的结果数量
+  reranker_model: "BAAI/bge-reranker-large"  # 重排序模型
+
+# API服务配置
+api:
+  host: "0.0.0.0"           # 服务绑定地址
+  port: 8000                # 服务端口
+  debug: false               # 是否开启调试模式（生产环境设为false）
+  cors_origins: ["*"]       # 跨域允许的源（生产环境指定具体域名）
+
+# 对话记忆配置
+memory:
+  max_history: 50           # 最大对话轮数
+  summary_threshold: 20     # 超过该轮数自动生成摘要
+  expire_days: 7            # 对话记忆过期时间（天）
+    
