@@ -7,7 +7,7 @@ class ChatLogger:
         data={
             "cid": cid,
             "history": [],
-            "modle":{
+            "model":{
                 "type":"siliconflow",
                 "name":"Qwen/Qwen3-8B"
             }
@@ -60,7 +60,19 @@ class ChatLogger:
         # 写回 JSON 文件
         with open("../data/Chat/conversation.json", 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-
+    @staticmethod
+    def get_model(self,cid):
+        with open(f"../data/Chat/{cid}.json","r") as f:
+            data = json.load(f)
+        return data["model"]
+    @staticmethod
+    def update_model(cid:str, ctx:dict):
+        with open(f"../data/Chat/{cid}.json","w") as f:
+            data = json.load(f)
+        data["model"] = ctx
+        with open(f"../data/Chat/{cid}.json","w") as f:
+            json.dump(data,f)
+            return "success"
 
 
 
