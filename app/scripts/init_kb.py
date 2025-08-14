@@ -8,7 +8,7 @@ from app.modules.vector_db.client import FaissClient
 from app.modules.vector_db.index_manager import FaissIndexManager
 from app.common.logger import logger
 
-def load_huawei_docs(data_dir: str = r"D:\python object\LLAMAI_VECTOR\data\init_docs") -> list:
+def load_huawei_docs(data_dir: str = r"../data/init_docs") -> list:
     ## 读取数据，设置绝对路径
 
 
