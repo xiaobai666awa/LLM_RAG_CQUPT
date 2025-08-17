@@ -53,7 +53,7 @@ class ChatMessageRequest(BaseModel):
 
 # ========= 模块级实例 =========
 _logger = ChatLogger()
-_conv = ConversationManager(_logger)
+_conv = ConversationManager()
 _rag = RAGPipeline()  # 模型就绪后替换为真实实现
 
 # ========= 随机 chat_id 生成（带去重保障）=========
@@ -132,7 +132,8 @@ def send_message(conversation_id: str, msg: ChatMessageRequest) -> JSONResponse:
     # 2) 获取上下文
     ctx = _conv.get_context(conversation_id, history_limit=msg.history_limit)
     # 3) RAG 生成
-    answer = _rag.build_rag_prompt(query=message,history=ctx)
+    model=_conv.get_model(conversation_id)
+    answer = _rag.build_rag_prompt(query=message,history=ctx,model=model)
     # 4) 记录助手消息
     _logger.append(conversation_id, {"role": "assistant", "content": answer})
 

@@ -1,22 +1,22 @@
 import fastapi
+import uvicorn
 from fastapi import APIRouter
 
-from api.endpoints import chat
-from api.endpoints import config
-from api.endpoints import vector
+from app.api.endpoints import chat
+from app.api.endpoints import config
+from app.api.endpoints import vector
 def init_app():
     return "应用初始化完毕"
 
 def register_routes(app: fastapi.FastAPI):
     app.include_router(chat.router)
     app.include_router(config.router)
-    app.include_router(vector.router)
+    # app.include_router(vector.router)
     return "路由注册完毕"
 
 app=fastapi.FastAPI()
 print("正在注册路由")
 print(register_routes(app))
-
 # from flask import Flask, request, jsonify
 # from app.modules.retrieval import HybridRetriever
 #

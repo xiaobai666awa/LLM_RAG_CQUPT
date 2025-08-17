@@ -1,10 +1,10 @@
 from app.modules.retrieval import HybridRetriever
 from typing import List, Dict
-
+import app.test.base_chat_with_model as bm
 class RAGPipeline:
 
 
-    def build_rag_prompt(self,query: str, history: List[Dict[str, str]]):
+    def build_rag_prompt(self,query: str, history: List[Dict[str, str]],model:dict):
         retriever = HybridRetriever(vector_weight=0.7, bm25_weight=0.3)
         retrieved_docs=retriever.retrieve(query)
         # 检索结果拼成 context
@@ -35,4 +35,5 @@ class RAGPipeline:
     
     摘要：
     """
-        return prompt
+
+        return bm.base_chat_test(prompt)
