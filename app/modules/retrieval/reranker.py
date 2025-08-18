@@ -4,7 +4,7 @@ from typing import List, Dict
 
 class CrossEncoderReranker:
     # def __init__(self, model_name: str = "BAAI/bge-reranker-large", device: str = "cpu"):
-    def __init__(self, model_name: str = r"D:\py_models\reranker_model", device: str = "cpu"):
+    def __init__(self, model_name: str = r"BAAI/bge-reranker-large", device: str = "cpu"):
         """
         初始化重排序模型
         :param model_name: 重排序模型（BGE重排序模型对中文技术文档友好）

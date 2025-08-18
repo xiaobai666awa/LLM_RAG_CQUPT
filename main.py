@@ -5,7 +5,10 @@ from fastapi import APIRouter
 from app.api.endpoints import chat
 from app.api.endpoints import config
 from app.api.endpoints import vector
+import app.scripts.init_kb as init_kb
 def init_app():
+
+    init_kb.init_huawei_kb()
     return "应用初始化完毕"
 
 def register_routes(app: fastapi.FastAPI):
@@ -17,6 +20,8 @@ def register_routes(app: fastapi.FastAPI):
 app=fastapi.FastAPI()
 print("正在注册路由")
 print(register_routes(app))
+print("正在初始化数据看")
+# print(init_app())
 # from flask import Flask, request, jsonify
 # from app.modules.retrieval import HybridRetriever
 #

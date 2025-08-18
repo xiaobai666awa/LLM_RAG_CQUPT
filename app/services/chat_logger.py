@@ -14,25 +14,24 @@ class ChatLogger:
         }
         with open(f"app/data/Chat/{cid}.json","w") as f:
             json.dump(data,f)
-
-        with open(f"app/data/Chat/conversation.json","r") as f:
-            conversation = json.load(f)
+        try:
+            with open(f"app/data/Chat/conversation.json","r") as f:
+                conversation = json.load(f)
+        except :
+            with open(f"app/data/Chat/conversation.json","w") as f:
+                conversation = {"conversation_list": []}
+                conversation["conversation_list"].append({"cid": cid, "conversation_name": f"conversation_{cid}"})
         if conversation:
             conversation["conversation_list"] .append({"cid": cid,"conversation_name":f"conversation_{cid}"})
-        else:
-            conversation = {"conversation_list":[]}
-            conversation["conversation_list"].append({"cid": cid,"conversation_name":f"conversation_{cid}"})
         with open(f"app/data/Chat/conversation.json","w") as f:
             json.dump(conversation,f)
-
-
         return "success"
     @staticmethod
     def append(cid:str, ctx:dict):
-        with open(f"app/data/Chat/{cid}","r") as f:
+        with open(f"app/data/Chat/{cid}.json","r") as f:
             data = json.load(f)
         data["history"].append(ctx)
-        with open(f"app/data/Chat/{cid}","w") as f:
+        with open(f"app/data/Chat/{cid}.json","w") as f:
             json.dump(data,f)
         return "success"
 
@@ -61,7 +60,7 @@ class ChatLogger:
         with open("app/data/Chat/conversation.json", 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     @staticmethod
-    def get_model(self,cid):
+    def get_model(cid):
         with open(f"app/data/Chat/{cid}.json","r") as f:
             data = json.load(f)
         return data["model"]

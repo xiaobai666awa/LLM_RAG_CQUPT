@@ -19,7 +19,7 @@ class HybridRetriever:
         :param bm25_weight: BM25检索结果的权重（0-1），需满足vector_weight + bm25_weight = 1
         """
 
-        self.embedder = SentenceTransformer(r"D:\py_models\em_model")
+        self.embedder = SentenceTransformer("BAAI/bge-large-zh")
         # 初始化组件
         self.vector_client = FaissClient(index_path=faiss_index_path) ######
         self.bm25_index = BM25IndexManager(index_dir=r"D:\python object\LLAMAI_VECTOR\data\bm25_index") #####倒排索引的文件

@@ -6,4 +6,3 @@ def base_chat_test(sender):
     return mdt.invoke(sender).content
 
 
-

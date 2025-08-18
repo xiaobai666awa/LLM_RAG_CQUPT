@@ -95,7 +95,7 @@ def _exists(conversation_id: str) -> bool:
         return True
     # 兜底：从 logger 列表确认（适配不同 Logger 实现）
     try:
-        ids = {str(x["conversation_id"]) for x in _logger.list_conversations()}
+        ids = {str(x["cid"]) for x in _logger.list_conversations()}
         if conversation_id in ids:
             _existing_ids.add(conversation_id)
             return True
@@ -127,12 +127,14 @@ def send_message(conversation_id: str, msg: ChatMessageRequest) -> JSONResponse:
     if not _exists(conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found. Call /chat/start first.")
     message = msg.message
+    print(message)
     # 1) 记录用户消息
     _logger.append(conversation_id, {"role": "user", "content": message})
     # 2) 获取上下文
     ctx = _conv.get_context(conversation_id, history_limit=msg.history_limit)
+    print(ctx)
     # 3) RAG 生成
-    model=_conv.get_model(conversation_id)
+    model=_conv.get_model(cid=conversation_id)
     answer = _rag.build_rag_prompt(query=message,history=ctx,model=model)
     # 4) 记录助手消息
     _logger.append(conversation_id, {"role": "assistant", "content": answer})

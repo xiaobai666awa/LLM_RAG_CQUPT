@@ -6,8 +6,10 @@ class RAGPipeline:
 
     def build_rag_prompt(self,query: str, history: List[Dict[str, str]],model:dict):
         retriever = HybridRetriever(vector_weight=0.7, bm25_weight=0.3)
+        print("开始查询rag库")
         retrieved_docs=retriever.retrieve(query)
         # 检索结果拼成 context
+        print("retrieved_docs:",retrieved_docs)
         context_text = "\n".join([doc.get("text", "") for doc in retrieved_docs])
         # 历史对话拼接
         history_text = ""
@@ -35,5 +37,8 @@ class RAGPipeline:
     
     摘要：
     """
-
+        print(prompt)
         return bm.base_chat_test(prompt)
+if __name__ == "__main__":
+    r=RAGPipeline()
+    print(r.build_rag_prompt(query="你好", history=[],model={"type": "siliconflow", "name": "Qwen/Qwen3-8B"}))

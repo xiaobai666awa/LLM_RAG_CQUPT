@@ -6,7 +6,7 @@ from pathlib import Path
 env_path = Path(__file__).parent.parent / "API.env"
 if env_path.exists():
     load_dotenv(env_path)
-
+print(env_path)
 
 def get_env(key: str, default: str = None, required: bool = False) -> str:
     """
@@ -23,11 +23,13 @@ def get_env(key: str, default: str = None, required: bool = False) -> str:
 
 
 # 阿里云大模型API密钥（必填）
-ALIYUN_DASHSCOPE_API_KEY = get_env("ALIYUN_DASHSCOPE_API_KEY", required=True)
+ALIYUN_DASHSCOPE_API_KEY = get_env("DASHSCOPE_API_KEY")
 
 # OpenAI API密钥（可选，若使用GPT模型则需配置）
 OPENAI_API_KEY = get_env("OPENAI_API_KEY")
-
+#硅基流动 API密钥
+SILICONFLOW_API_KEY = get_env("SILICONFLOW_API_KEY")
+SILICONFLOW_BASE_URL = get_env("SILICONFLOW_BASE_URL")
 # Redis连接配置（用于对话记忆）
 REDIS_HOST = get_env("REDIS_HOST", "localhost")
 REDIS_PORT = get_env("REDIS_PORT", "6379")

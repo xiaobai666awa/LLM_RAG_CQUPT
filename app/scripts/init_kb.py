@@ -4,11 +4,12 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from sentence_transformers import SentenceTransformer
 
+from app.core.model import get_embedding_model
 from app.modules.vector_db.client import FaissClient
 from app.modules.vector_db.index_manager import FaissIndexManager
 from app.common.logger import logger
 
-def load_huawei_docs(data_dir: str = r"../data/init_docs") -> list:
+def load_huawei_docs(data_dir: str = r"app/data/init_docs") -> list:
     ## 读取数据，设置绝对路径
 
 
@@ -65,8 +66,7 @@ def add_metadata_to_nodes(nodes: list) -> list:
 def generate_vectors(nodes: list) -> list:
     """为Node节点生成向量（BGE-large-zh模型）"""
 
-    embedding_model = SentenceTransformer(r"D:\py_models\em_model", device="cuda")
-    # 调用本地模型
+    embedding_model = SentenceTransformer("BAAI/bge-large-zh")    # 调用本地模型
 
 
     # 批量生成向量（每次batch_size条，避免内存溢出）
@@ -113,7 +113,7 @@ def init_huawei_kb():
         ]
 
         # 6. 插入向量数据库（Faiss）
-        FAISS_DIR = r"D:\python object\LLAMAI_VECTOR\data\faiss_index"
+        FAISS_DIR = r"app/data/faiss_index"
         ## 设置一下向量库的路径
 
         faiss_client = FaissClient(index_path=FAISS_DIR)  # 实例化Faiss客户端
