@@ -12,10 +12,11 @@ class CrossEncoderReranker:
         """
         # self.model = CrossEncoder(model_name, device=device)
         # logger.info(f"加载重排序模型：{model_name}（设备：{device}）")
-        self.model = CrossEncoder(model_name, device=device)
+        self.model = CrossEncoder(model_name)
         logger.info(f"加载重排序模型：{model_name}（设备：{device}）")
 
     def rerank(self, query: str, candidates: List[Dict], top_k: int = 5) -> List[Dict]:
+        print("开始重排序")
         """
         对检索候选结果重排序
         :param query: 用户查询
@@ -31,11 +32,10 @@ class CrossEncoderReranker:
         
         # 计算相关性分数（越高越相关）
         scores = self.model.predict(pairs)
-        
+        print("重排序结束")
         # 关联分数并排序
         for i, candidate in enumerate(candidates):
             candidate["rerank_score"] = float(scores[i])
-        
         # 按rerank_score降序排列，取top_k
         reranked = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)[:top_k]
         logger.info(f"重排序完成，原始{len(candidates)}条→保留{len(reranked)}条")

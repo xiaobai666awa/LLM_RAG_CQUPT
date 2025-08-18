@@ -12,7 +12,7 @@ import numpy as np
 
 class HybridRetriever:
     def __init__(self, vector_weight: float = 0.7, bm25_weight: float = 0.3,
-                 faiss_index_path: str = r"D:\python object\LLAMAI_VECTOR\data\faiss_index"): ###### 设置向量库的绝对路径
+                 faiss_index_path: str = r"app/data/faiss_index"):
         """
         混合检索器（向量检索+BM25检索+重排序）
         :param vector_weight: 向量检索结果的权重（0-1）
@@ -22,7 +22,7 @@ class HybridRetriever:
         self.embedder = SentenceTransformer("BAAI/bge-large-zh")
         # 初始化组件
         self.vector_client = FaissClient(index_path=faiss_index_path) ######
-        self.bm25_index = BM25IndexManager(index_dir=r"D:\python object\LLAMAI_VECTOR\data\bm25_index") #####倒排索引的文件
+        self.bm25_index = BM25IndexManager(index_dir=r"app/data/bm25_index") #####倒排索引的文件
         self.reranker = CrossEncoderReranker()
         
         # 权重校验
@@ -139,7 +139,7 @@ class HybridRetriever:
                 candidates=merged_results,
                 top_k=top_k
             )
-
+            print("yes")
             # ---- JSON 序列化清洗：把 numpy 类型转原生 ----
             for r in final_results:
                 if "doc_id" in r and isinstance(r["doc_id"], np.integer):
