@@ -1,5 +1,5 @@
 import json
-from pathlib import Path
+from typing import List, Any, Dict
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from sentence_transformers import SentenceTransformer
@@ -62,25 +62,47 @@ def add_metadata_to_nodes(nodes: list) -> list:
     logger.info("Node节点元数据添加完成")
     return nodes
 
-def generate_vectors(nodes: list) -> list:
+
+def generate_vectors(nodes: List[Any]) -> List[List[float]]:
     """为Node节点生成向量（BGE-large-zh模型）"""
+    try:
+        # 加载模型（确保路径正确）
+        embedding_model = SentenceTransformer(r"D:\py_models\em_model", device="cuda")
 
-    embedding_model = SentenceTransformer(r"D:\py_models\em_model", device="cuda")
-    # 调用本地模型
+        # 测试模型输出维度
+        test_vector = embedding_model.encode("测试向量维度")
+        print(f"模型输出向量维度: {len(test_vector)}")
+        if len(test_vector) != 1024:
+            logger.warning(f"模型输出维度异常: {len(test_vector)}，请检查模型是否正确")
 
+        # 批量生成向量
+        batch_size = 64
+        all_vectors = []
+        total = len(nodes)
 
-    # 批量生成向量（每次batch_size条，避免内存溢出）
-    batch_size = 64
-    all_vectors = []
+        for i in range(0, total, batch_size):
+            batch_nodes = nodes[i:i + batch_size]
+            # 关键修正：TextNode对象用.node.text访问文本，而非.node["text"]
+            texts = [node.text for node in batch_nodes]  # 修正这里
 
-    for i in range(0, len(nodes), batch_size):
-        batch_nodes = nodes[i:i+batch_size]
-        texts = [node.text for node in batch_nodes]
-        # vectors = embedding_model.embed_documents(texts)
-        vectors = embedding_model.encode(texts, show_progress_bar=True, convert_to_numpy=True)
-        all_vectors.extend(vectors)
-        logger.info(f"已生成{i+len(batch_nodes)}/{len(nodes)}个向量")
-    return all_vectors
+            vectors = embedding_model.encode(
+                texts,
+                show_progress_bar=True,
+                convert_to_numpy=True
+            )
+
+            # 检查批次向量维度
+            if vectors.shape[1] != 1024:
+                raise ValueError(f"批次向量维度错误: 期望1024，实际{vectors.shape[1]}")
+
+            all_vectors.extend(vectors.tolist())
+            logger.info(f"已生成{i + len(batch_nodes)}/{total}个向量")
+
+        return all_vectors
+
+    except Exception as e:
+        logger.error(f"向量生成失败: {str(e)}")
+        raise
 
 def init_huawei_kb():
     """初始化华为技术文档知识库"""
@@ -113,7 +135,7 @@ def init_huawei_kb():
         ]
 
         # 6. 插入向量数据库（Faiss）
-        FAISS_DIR = r"D:\python object\LLAMAI_VECTOR\data\faiss_index"
+        FAISS_DIR = r"..\data\faiss_index"
         ## 设置一下向量库的路径
 
         faiss_client = FaissClient(index_path=FAISS_DIR)  # 实例化Faiss客户端
