@@ -127,18 +127,14 @@ def send_message(conversation_id: str, msg: ChatMessageRequest) -> JSONResponse:
     if not _exists(conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found. Call /chat/start first.")
     message = msg.message
-    print(message)
     # 1) 记录用户消息
-    _logger.append(conversation_id, {"role": "user", "content": message})
     # 2) 获取上下文
     ctx = _conv.get_context(conversation_id, history_limit=msg.history_limit)
-    print(ctx)
     # 3) RAG 生成
     model=_conv.get_model(cid=conversation_id)
     answer = _rag.build_rag_prompt(query=message,history=ctx,model=model)
-    # 4) 记录助手消息
-    _logger.append(conversation_id, {"role": "assistant", "content": answer})
-
+    # 4) 记录消息
+    _logger.append(conversation_id, { "user": message,"assistant": answer})
     return JSONResponse({"conversation_id": conversation_id, "answer": answer})
 
 @router.get("/chat/{conversation_id}")

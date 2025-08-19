@@ -71,7 +71,7 @@ class ChatLogger:
         data["model"] = ctx
         with open(f"app/data/Chat/{cid}.json","w") as f:
             json.dump(data,f)
-            return "success"
+            return True
 
 
 

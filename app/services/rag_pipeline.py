@@ -1,8 +1,8 @@
 from app.modules.retrieval import HybridRetriever
 from typing import List, Dict
-import app.test.base_chat_with_model as bm
+import app.core.model as bm
+import app.services.chat_logger as chat_logger
 class RAGPipeline:
-
 
     def build_rag_prompt(self,query: str, history: List[Dict[str, str]],model:dict):
         retriever = HybridRetriever(vector_weight=0.7, bm25_weight=0.3)
@@ -14,8 +14,7 @@ class RAGPipeline:
         # 历史对话拼接
         history_text = ""
         for turn in history:
-            role = "用户" if turn["role"] == "user" else "助手"
-            history_text += f"{role}：{turn['content']}\n"
+            history_text += f"用户：{turn["user"]}\n助手:{turn['assistant']}"
 
         # 最终 prompt
         prompt = f"""
@@ -41,8 +40,9 @@ class RAGPipeline:
     
     摘要：
     """
-        print(prompt)
-        return bm.base_chat_test(prompt)
+        print(history_text)
+        md=bm.get_chat_model(type=model['type'],name=model['name'])
+        return md.invoke(prompt).content
 if __name__ == "__main__":
     retriever = HybridRetriever(vector_weight=0.7, bm25_weight=0.3)
     retrieved_docs=retriever.retrieve("什么是2FA")

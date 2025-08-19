@@ -7,9 +7,12 @@ from app.services.chat_logger import ChatLogger
 
 # （可从配置文件或数据库加载）
 SUPPORTED_MODELS = [
-    {"provider": "openai", "name": "gpt-4-turbo"},
-    {"provider": "openai", "name": "gpt-4o"},
-    {"provider": "anthropic", "name": "claude-3-opus"}
+    {"type": "openai", "name": "gpt-4-turbo"},
+    {"type": "openai", "name": "gpt-4o"},
+    {"type": "anthropic", "name": "claude-3-opus"},
+    {"type": "anthropic", "name": "claude-3-opus"},
+    {"type": "siliconflow","name":"Qwen/Qwen3-8B"}
+
 ]
 conversation_configs =ChatLogger()
 router = APIRouter(prefix="/config", tags=["config"])
