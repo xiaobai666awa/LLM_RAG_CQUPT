@@ -74,7 +74,7 @@ class HybridRetriever:
             filters["device_model"] = device_models[0]  # 取第一个匹配的型号
 
         # 2. 提取技术标签（如"VLAN"→映射到"交换机配置-VLAN"）
-        tech_tags = [t for t in terms if any(t in tag for tag in ["VLAN", "OSPF", "路由", "交换机"])]
+        tech_tags = [t for t in terms if any(t in tag for tag in ["VLAN", "OSPF", "bgp", "acl","nat"])]
         if tech_tags:
             filters["tech_tag"] = tech_tags
 
