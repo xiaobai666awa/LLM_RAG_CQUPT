@@ -122,7 +122,7 @@ def load_multiclass_docs(data_dir: str = r"app/data/init_docs") -> list:
         try:
             reader = SimpleDirectoryReader(
                 input_dir=item.resolve(),  # 使用绝对路径
-                required_exts=[".json", ".md", ".pdf"],
+                required_exts=[".json", ".md", ".pdf", ".txt"],
                 recursive=True  # 若子目录下还有子目录，需开启recursive
             )
             dir_docs = reader.load_data()
