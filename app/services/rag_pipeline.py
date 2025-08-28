@@ -1,4 +1,3 @@
-
 from app.modules.retrieval import HybridRetriever
 from typing import List, Dict
 import app.core.model as bm
@@ -46,8 +45,11 @@ class RAGPipeline:
 2. 明确标注命令适用的设备型号和固件版本（如「适用于S5720 V200R021及以上版本」）。
 3. 包含配置验证命令（如「使用display vlan验证配置结果」）。
 4. 若存在风险提示（如重启生效），需单独用「注意：」标注。
-5. 最后用「来源：」标注引用的配置文档（格式：文档名称 - 章节）。**必须在回答末尾添加「参考文档」板块，包含文档标题和在线URL**，格式：  
-   「{文档标题}：[{URL}]({URL})」
+5. 最后用「来源：」标注引用的配置文档（格式：文档名称 - 章节）。
+6. **必须在回答末尾添加「参考文档」板块，包含所有引用的文档标题和在线URL**，格式如下：
+   参考文档：
+   - 「文档标题1」：[在线URL1](在线URL1)
+   - 「文档标题2」：[在线URL2](在线URL2)
 
 文档内容：
 {context_text}
@@ -144,26 +146,50 @@ class RAGPipeline:
         retrieved_docs = self.retrieve_docs(query, top_k=5)
         print("retrieved_docs:", retrieved_docs)
 
-        # 2. 提取上下文和主要分类
-        context_text = "\n".join([doc.get("text", "") for doc in retrieved_docs])
+        # 2. 提取上下文 + 生成「参考文档字符串」（关键新增）
+        context_parts = []
+        reference_parts = []  # 存储每个参考文档的条目
+        for idx, doc in enumerate(retrieved_docs, 1):
+            # 提取文档核心信息（加兜底，避免空值）
+            doc_text = doc.get("text", "无文档内容")
+            doc_title = doc.get("title", f"华为解决方案文档{idx}")  # 用title字段，加兜底
+            doc_url = doc.get("source_url", "未知链接")  # 用source_url字段，加兜底
+            doc_source = doc.get("source", "未知来源文件")
+
+            # 拼接上下文（保留文档来源标识，方便模型对应）
+            context_parts.append(f"""
+    ==== 文档{idx}（{doc_title}）====
+    来源文件：{doc_source}
+    内容：{doc_text}
+    """)
+
+            # 拼接参考文档条目（匹配模板要求的格式）
+            reference_parts.append(f"- 「{doc_title}」：[{doc_url}]({doc_url})")
+
+        # 合并上下文和参考文档字符串
+        context_text = "\n".join(context_parts)
+        reference_docs = "\n".join(reference_parts)  # 最终的参考文档列表
+
+        # 3. 提取主要分类（原有逻辑不变）
         main_category = self._get_main_category(retrieved_docs)
 
-        # 3. 拼接历史对话
+        # 4. 拼接历史对话（原有逻辑不变）
         history_text = ""
         for turn in history:
             history_text += f"用户：{turn['user']}\n助手：{turn['assistant']}\n"
 
-        # 4. 选择对应分类的Prompt模板
+        # 5. 选择对应分类的Prompt模板（原有逻辑不变）
         prompt_template = self.prompt_templates.get(main_category, self.prompt_templates["default"])
 
-        # 5. 填充模板变量
+        # 6. 填充模板变量（新增 reference_docs 变量！）
         prompt = prompt_template.format(
             history_text=history_text.strip(),
             context_text=context_text,
-            query=query
+            query=query,
+            reference_docs=reference_docs  # 传递参考文档字符串
         )
 
-        # 6. 调用模型生成回答
+        # 7. 调用模型生成回答（原有逻辑不变）
         print("历史对话：", history_text.strip())
         md = bm.get_chat_model(type=model['type'], name=model['name'])
         print("模型实例类型：", type(md))
@@ -174,26 +200,26 @@ if __name__ == "__main__":
     # 测试不同分类的回答效果
     rag = RAGPipeline()
 
-    # # 测试1：华为ip问题
-    # print("=== 测试华为配置类问题 ===")
-    # print(rag.build_rag_prompt(
-    #     query="为什么需要5G-R？",
-    #     history=[],
-    #     model={"type": "siliconflow", "name": "deepseek-ai/DeepSeek-V3"}
-    # ))
-    #
-    # # 测试2：思科配置类问题
-    # print("\n=== 测试思科配置类问题 ===")
-    # print(rag.build_rag_prompt(
-    #     query="ecore9300 TTU业务出现批量去附着故障怎么办？",
-    #     history=[],
-    #     model={"type": "siliconflow", "name": "deepseek-ai/DeepSeek-V3"}
-    # ))
-    #
-    # # 测试3：知识类问题
-    # print("\n=== 测试知识类问题 ===")
-    # print(rag.build_rag_prompt(
-    #     query="什么是OSPF协议？",
-    #     history=[],
-    #     model={"type": "siliconflow", "name": "deepseek-ai/DeepSeek-V3"}
-    # ))
+    # 测试1：华为ip问题
+    print("=== 测试华为配置类问题 ===")
+    print(rag.build_rag_prompt(
+        query="为什么需要5G-R？",
+        history=[],
+        model={"type": "siliconflow", "name": "deepseek-ai/DeepSeek-V3"}
+    ))
+
+    # 测试2：思科配置类问题
+    print("\n=== 测试思科配置类问题 ===")
+    print(rag.build_rag_prompt(
+        query="ecore9300 TTU业务出现批量去附着故障怎么办？",
+        history=[],
+        model={"type": "siliconflow", "name": "deepseek-ai/DeepSeek-V3"}
+    ))
+
+    # 测试3：知识类问题
+    print("\n=== 测试知识类问题 ===")
+    print(rag.build_rag_prompt(
+        query="什么是OSPF协议？",
+        history=[],
+        model={"type": "siliconflow", "name": "deepseek-ai/DeepSeek-V3"}
+    ))
