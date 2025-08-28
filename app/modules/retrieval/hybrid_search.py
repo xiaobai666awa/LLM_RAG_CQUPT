@@ -17,10 +17,7 @@ class HybridRetriever:
                  faiss_index_path: str = r"app/data/faiss_index",
                  classifier_model_path: str = r"app/modules/retrieval/model/bert_multiclass_final"):
         """
-        混合检索器（新增分类预测功能）
-        :param vector_weight: 向量检索权重
-        :param bm25_weight: BM25检索权重
-        :param classifier_model_path: BERT分类模型路径（预测查询分类）
+        混合检索器（优化过滤机制和URL输出）
         """
         # 初始化嵌入模型
         self.embedder = SentenceTransformer("BAAI/bge-large-zh")
@@ -30,11 +27,11 @@ class HybridRetriever:
         self.bm25_index = BM25IndexManager(index_dir=r"app/data/bm25_index")
         self.reranker = CrossEncoderReranker()
 
-        # 初始化分类模型（预测查询所属分类）
+        # 初始化分类模型
         self.classifier_tokenizer = AutoTokenizer.from_pretrained(classifier_model_path)
         self.classifier_model = AutoModelForSequenceClassification.from_pretrained(classifier_model_path)
-        self.classifier_model.eval()  # 推理模式
-        self.id2label = self.classifier_model.config.id2label  # 标签映射（id→分类名）
+        self.classifier_model.eval()
+        self.id2label = self.classifier_model.config.id2label
 
         # 权重校验
         if not (abs(vector_weight + bm25_weight - 1) < 1e-6):
@@ -42,8 +39,33 @@ class HybridRetriever:
         self.vector_weight = vector_weight
         self.bm25_weight = bm25_weight
 
+        # 加载元数据白名单（确保过滤条件有效）
+        self.metadata_whitelist = self._load_metadata_whitelist()
+
+    def _load_metadata_whitelist(self) -> Dict:
+        """加载向量库中所有存在的元数据值（用于验证过滤条件）"""
+        try:
+            # 批量获取部分文档来提取元数据白名单
+            sample_docs = self.vector_client.search(query_vec=np.zeros(1024), top_k=1000)
+            if not sample_docs:
+                return {"device_model": set(), "category": set(), "tech_tag": set()}
+
+            # 提取所有可能的元数据值
+            device_models = set(doc.get("device_model") for doc in sample_docs if doc.get("device_model"))
+            categories = set(doc.get("category") for doc in sample_docs if doc.get("category"))
+            tech_tags = set(tag for doc in sample_docs for tag in doc.get("tech_tag", []) if tag)
+
+            return {
+                "device_model": device_models,
+                "category": categories,
+                "tech_tag": tech_tags
+            }
+        except Exception as e:
+            logger.warning(f"加载元数据白名单失败：{str(e)}，将跳过过滤条件验证")
+            return {"device_model": set(), "category": set(), "tech_tag": set()}
+
     def _classify_query(self, query: str) -> str:
-        """预测用户查询的分类（如huawei_solutions/cisco_config）"""
+        """预测用户查询的分类"""
         try:
             inputs = self.classifier_tokenizer(
                 query,
@@ -57,38 +79,88 @@ class HybridRetriever:
                 outputs = self.classifier_model(**inputs)
             pred_id = torch.argmax(outputs.logits, dim=1).item()
             pred_category = self.id2label[pred_id]
-            logger.info(f"查询分类预测：{query} → {pred_category}")
+
+            # 检查预测分类是否在白名单中
+            if pred_category not in self.metadata_whitelist["category"]:
+                logger.warning(f"预测分类{pred_category}不在知识库中，将不使用该分类过滤")
+                return ""
+
             return pred_category
         except Exception as e:
             logger.warning(f"查询分类预测失败：{str(e)}，将跳过分类过滤")
             return ""
 
     def _extract_filters(self, query: str) -> Dict:
-        """从查询中提取过滤条件（新增分类过滤）"""
+        """提取并验证过滤条件，确保有效性"""
         filters = {}
         terms = extract_tech_terms(query)
 
-        # 1. 提取设备型号（如"S5720"）
+        # 1. 提取设备型号（仅保留白名单中存在的型号）
         device_models = [t for t in terms if is_valid_device_model(t)]
-        if device_models:
-            filters["device_model"] = device_models[0]  # 取第一个匹配的型号
+        valid_devices = [d for d in device_models if d in self.metadata_whitelist["device_model"]]
 
-        # 2. 提取技术标签（如"VLAN"→映射到"交换机配置-VLAN"）
-        tech_tags = [t for t in terms if any(t in tag for tag in ["VLAN", "OSPF", "bgp", "acl","nat"])]
-        if tech_tags:
-            filters["tech_tag"] = tech_tags
+        if valid_devices:
+            filters["device_model"] = valid_devices[0]
+            logger.info(f"提取到有效设备型号过滤条件：{valid_devices[0]}")
+        else:
+            if device_models:
+                logger.warning(f"提取的设备型号{device_models}不在知识库中，跳过设备过滤")
+            else:
+                logger.info("未提取到设备型号，不添加设备过滤")
 
-        # 3. 新增：添加分类过滤（基于BERT预测结果）
+        # 2. 分类过滤（仅在高置信度时使用）
         pred_category = self._classify_query(query)
         if pred_category:
-            filters["category"] = pred_category  # 核心：按预测分类过滤
+            with torch.no_grad():
+                inputs = self.classifier_tokenizer(query, return_tensors="pt", truncation=True, max_length=128)
+                outputs = self.classifier_model(**inputs)
+                pred_probs = torch.softmax(outputs.logits, dim=1)
+                max_prob = pred_probs.max().item()
+
+            if max_prob > 0.7:
+                filters["category"] = pred_category
+                logger.info(f"分类置信度{max_prob:.2f}，添加分类过滤：{pred_category}")
+            else:
+                logger.info(f"分类置信度{max_prob:.2f}（低于0.7），不添加分类过滤")
 
         return filters
 
-    def _merge_results(self, vector_results: List[Dict], bm25_results: List[Dict]) -> List[Dict]:
-        """融合向量检索和BM25检索结果（保留分类信息）"""
+    def _get_reliable_results(self, query_vec: np.ndarray, query: str, filters: Dict, top_k: int) -> tuple:
+        """
+        分级检索策略：确保在过滤条件过严时仍能返回结果
+        1. 先使用完整过滤条件
+        2. 若无结果，去除设备型号过滤
+        3. 若仍无结果，去除所有过滤条件
+        """
+        # 1. 尝试完整过滤条件
+        vector_results = self.vector_client.search(query_vec, filters, top_k)
+        bm25_results = self.bm25_index.search(query, filters, top_k)
 
-        # 归一化分数（0-1范围）
+        if len(vector_results) + len(bm25_results) > 0:
+            return vector_results, bm25_results, filters
+
+        # 2. 去除设备型号过滤
+        if "device_model" in filters:
+            reduced_filters = {k: v for k, v in filters.items() if k != "device_model"}
+            logger.info(f"完整过滤无结果，尝试去除设备型号过滤：{reduced_filters}")
+
+            vector_results = self.vector_client.search(query_vec, reduced_filters, top_k)
+            bm25_results = self.bm25_index.search(query, reduced_filters, top_k)
+
+            if len(vector_results) + len(bm25_results) > 0:
+                return vector_results, bm25_results, reduced_filters
+
+        # 3. 去除所有过滤条件
+        logger.warning(f"过滤条件过严，将返回所有相关结果（不进行过滤）")
+        vector_results = self.vector_client.search(query_vec, {}, top_k)
+        bm25_results = self.bm25_index.search(query, {}, top_k)
+
+        return vector_results, bm25_results, {}
+
+    def _merge_results(self, vector_results: List[Dict], bm25_results: List[Dict]) -> List[Dict]:
+        """融合检索结果，保留URL和元数据"""
+
+        # 归一化分数
         def normalize(scores):
             if not scores:
                 return []
@@ -102,76 +174,63 @@ class HybridRetriever:
         norm_vector = normalize(vector_scores)
         norm_bm25 = normalize(bm25_scores)
 
-        # 构建文档ID到结果的映射（去重，保留分类信息）
+        # 构建文档ID到结果的映射（保留所有元数据）
         doc_map = {}
         for i, res in enumerate(vector_results):
             doc_id = res["doc_id"]
-            # 确保保留分类信息
             doc_map[doc_id] = {**res,
                                "merged_score": norm_vector[i] * self.vector_weight,
-                               "category": res.get("category", "unknown")}  # 显式保留分类
+                               "source_url": res.get("source_url")}  # 保留URL
 
         for i, res in enumerate(bm25_results):
             doc_id = res["doc_id"]
             if doc_id in doc_map:
-                # 已存在，叠加BM25权重
                 doc_map[doc_id]["merged_score"] += norm_bm25[i] * self.bm25_weight
             else:
-                # 新文档，直接计算融合分数
                 doc_map[doc_id] = {**res,
                                    "merged_score": norm_bm25[i] * self.bm25_weight,
-                                   "category": res.get("category", "unknown")}  # 显式保留分类
+                                   "source_url": res.get("source_url")}  # 保留URL
 
-        # 按融合分数排序，取前20条（为重排序保留足够候选）
+        # 按融合分数排序
         merged = sorted(doc_map.values(), key=lambda x: x["merged_score"], reverse=True)[:20]
         logger.info(f"结果融合完成，向量{len(vector_results)}条+BM25{len(bm25_results)}条→去重后{len(merged)}条")
         return merged
 
     def retrieve(self, query: str, user_filters: Optional[Dict] = None, top_k: int = 5) -> List[Dict]:
-        """
-        执行混合检索（新增分类过滤，返回结果含分类信息）
-        :param query: 用户查询
-        :param user_filters: 用户指定过滤条件（支持{"category": "cisco_config"}强制筛选）
-        :param top_k: 最终返回数量
-        :return: 检索结果（每条含category字段标注来源分类）
-        """
+        """执行混合检索，确保过滤可靠性和URL输出"""
         try:
-            # 1. 提取自动过滤条件（含分类预测）
+            # 1. 提取并合并过滤条件
             auto_filters = self._extract_filters(query)
-            # 合并用户过滤条件（用户指定优先，可覆盖自动分类）
             filters = {**auto_filters, **(user_filters or {})}
-            logger.info(f"最终检索过滤条件：{filters}")
+            logger.info(f"初始检索过滤条件：{filters}")
 
-            # 2. 向量检索
+            # 2. 生成查询向量
             query_vec = self.embedder.encode([query], convert_to_numpy=True)[0]
             query_vec = query_vec.astype(np.float32)
-            vector_results = self.vector_client.search(
-                query_vec=query_vec,
-                filters=filters,
-                top_k=10
-            )
 
-            # 3. BM25关键词检索
-            bm25_results = self.bm25_index.search(
+            # 3. 分级检索（确保有结果返回）
+            vector_results, bm25_results, used_filters = self._get_reliable_results(
+                query_vec=query_vec,
                 query=query,
                 filters=filters,
                 top_k=10
             )
+            logger.info(f"最终使用的过滤条件：{used_filters}")
 
-            # 4. 融合检索结果（保留分类信息）
+            # 4. 融合检索结果
             merged_results = self._merge_results(vector_results, bm25_results)
             if not merged_results:
-                logger.warning("未检索到任何结果")
+                logger.warning("所有检索策略均未返回结果")
                 return []
 
-            # 5. 重排序（提升相关性）
+            # 5. 重排序
             final_results = self.reranker.rerank(
                 query=query,
                 candidates=merged_results,
                 top_k=top_k
             )
 
-            # 6. 清洗结果（确保分类信息完整）
+            # 6. 清洗结果（确保URL和元数据正确）
             for r in final_results:
                 # 转换numpy类型为原生类型
                 if "doc_id" in r and isinstance(r["doc_id"], np.integer):
@@ -179,14 +238,21 @@ class HybridRetriever:
                 for k in ("score", "merged_score", "rerank_score"):
                     if k in r and r[k] is not None:
                         r[k] = float(r[k])
-                # 确保tech_tag格式统一
+
+                # 确保URL字段存在且格式正确
+                if "source_url" not in r:
+                    r["source_url"] = None
+                elif r["source_url"] == "unknown":
+                    r["source_url"] = None
+
+                # 处理技术标签格式
                 if "tech_tag" in r and isinstance(r["tech_tag"], str):
                     r["tech_tag"] = r["tech_tag"].split(",") if r["tech_tag"] else []
-                # 确保category字段存在（标注来源分类）
-                if "category" not in r:
-                    r["category"] = "unknown"
 
-            logger.info(f"检索完成，返回{len(final_results)}条结果（含分类信息）")
+                # 确保分类信息完整
+                r["category"] = r.get("category", "unknown")
+
+            logger.info(f"检索完成，返回{len(final_results)}条结果（含URL信息）")
             return final_results
 
         except Exception as e:
