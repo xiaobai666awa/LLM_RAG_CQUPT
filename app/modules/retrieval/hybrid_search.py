@@ -15,9 +15,11 @@ import torch
 class HybridRetriever:
     def __init__(self, vector_weight: float = 0.7, bm25_weight: float = 0.3,
                  faiss_index_path: str = r"app/data/faiss_index",
-                 classifier_model_path: str = r"app/modules/retrieval/model/bert_multiclass_final"):
+                 classifier_model_path: str = r"app/modules/retrieval/model/bert_multiclass_final",
+                 enable_category_filter: bool = False):  # 新增：分类过滤开关，默认关闭
         """
-        混合检索器（优化过滤机制和URL输出）
+        混合检索器（支持分类过滤开关，默认关闭）
+        :param enable_category_filter: 是否启用分类过滤（True=启用，False=关闭）
         """
         # 初始化嵌入模型
         self.embedder = SentenceTransformer("BAAI/bge-large-zh")
@@ -27,11 +29,27 @@ class HybridRetriever:
         self.bm25_index = BM25IndexManager(index_dir=r"app/data/bm25_index")
         self.reranker = CrossEncoderReranker()
 
-        # 初始化分类模型
-        self.classifier_tokenizer = AutoTokenizer.from_pretrained(classifier_model_path)
-        self.classifier_model = AutoModelForSequenceClassification.from_pretrained(classifier_model_path)
-        self.classifier_model.eval()
-        self.id2label = self.classifier_model.config.id2label
+        # 新增：根据开关决定是否加载分类模型
+        self.enable_category_filter = enable_category_filter
+        self.classifier_tokenizer = None
+        self.classifier_model = None
+        self.id2label = None
+
+        if self.enable_category_filter:
+            try:
+                # 仅在启用时加载分类模型
+                self.classifier_tokenizer = AutoTokenizer.from_pretrained(classifier_model_path)
+                self.classifier_model = AutoModelForSequenceClassification.from_pretrained(
+                    classifier_model_path
+                )
+                self.classifier_model.eval()
+                self.id2label = self.classifier_model.config.id2label
+                logger.info("分类过滤功能已启用，成功加载分类模型")
+            except Exception as e:
+                logger.error(f"启用分类过滤失败：分类模型加载错误{str(e)}", exc_info=True)
+                self.enable_category_filter = False  # 加载失败时自动关闭
+        else:
+            logger.info("分类过滤功能默认关闭，不加载分类模型")
 
         # 权重校验
         if not (abs(vector_weight + bm25_weight - 1) < 1e-6):
@@ -65,7 +83,12 @@ class HybridRetriever:
             return {"device_model": set(), "category": set(), "tech_tag": set()}
 
     def _classify_query(self, query: str) -> str:
-        """预测用户查询的分类"""
+        """预测用户查询的分类（仅在启用分类过滤时执行）"""
+        # 新增：未启用分类过滤时直接返回空
+        if not self.enable_category_filter:
+            logger.debug("分类过滤已关闭，跳过查询分类预测")
+            return ""
+
         try:
             inputs = self.classifier_tokenizer(
                 query,
@@ -91,7 +114,7 @@ class HybridRetriever:
             return ""
 
     def _extract_filters(self, query: str) -> Dict:
-        """提取并验证过滤条件，确保有效性"""
+        """提取并验证过滤条件，确保有效性（分类过滤仅在启用时执行）"""
         filters = {}
         terms = extract_tech_terms(query)
 
@@ -108,7 +131,12 @@ class HybridRetriever:
             else:
                 logger.info("未提取到设备型号，不添加设备过滤")
 
-        # 2. 分类过滤（仅在高置信度时使用）
+        # 2. 分类过滤（仅在启用且高置信度时使用）
+        # 新增：未启用分类过滤时跳过
+        if not self.enable_category_filter:
+            logger.debug("分类过滤已关闭，不添加分类过滤条件")
+            return filters
+
         pred_category = self._classify_query(query)
         if pred_category:
             with torch.no_grad():

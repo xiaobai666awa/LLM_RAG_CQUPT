@@ -136,15 +136,28 @@ def load_multiclass_docs(data_dir: str = r"app/data/init_docs") -> list:
 
         # 为每个文档添加分类元数据（关键：确保分类被写入）
         for doc in dir_docs:
-            doc.metadata["category"] = category  # 强制写入分类
+            doc.metadata["category"] = category
             doc.metadata["subdir"] = subdir_name
-            doc.metadata["root_dir"] = data_path.resolve()  # 新增：记录根目录，便于调试
+            doc.metadata["root_dir"] = data_path.resolve()
+
+            if doc.metadata.get("file_extension") == ".pdf":
+                try:
+                    ocr_text = ocr_processor.extract_text(doc.metadata["file_path"])
+                    doc.text = ocr_text.strip()  # 替换为OCR结果
+                    logger.debug(f"OCR处理完成：{doc.metadata['file_name']}")
+                except Exception as e:
+                    logger.error(f"OCR处理失败{doc.metadata['file_name']}：{str(e)}")
+
             all_docs.append(doc)
 
         logger.info(f"分类[{category}]加载完成，共{len(dir_docs)}份文档")
 
+
+
+
     logger.info(f"所有分类文档加载完成，总计{len(all_docs)}份原始文档")
     return all_docs
+
 
 
 def split_into_nodes(docs: list) -> list:

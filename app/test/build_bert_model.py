@@ -23,7 +23,7 @@ class Config:
     DATA_ROOT = r"app/data/init_docs"
     TEST_SIZE = 0.2
     RANDOM_STATE = 42
-    MODEL_NAME = r"D:/py_models/huawei-noah_TinyBERT_General_4L_312D"   #改为本地模型地址
+    MODEL_NAME = r"D:/py_models/huawei-noah_TinyBERT_General_4L_312D"   # 本地模型地址
     SAVE_DIR = "app/modules/retrieval/model/bert_multiclass_final"
     MAX_LENGTH = 128
     LEARNING_RATE = 1e-5
@@ -31,9 +31,12 @@ class Config:
     EPOCHS = 5
     WEIGHT_DECAY = 0.01
     LOG_DIR = "logs/bert_training"
+    # 新增：目标类别（需要提高占比的类别）
+    TARGET_CATEGORIES = ["huawei_knowledge", "huawei_solutions"]  # 根据实际类别名称调整
+    TARGET_RATIO = 0.8  # 目标类别总占比
 
 
-# -------------------------- 数据准备 --------------------------
+# -------------------------- 数据准备（核心修改：调整类别比重） --------------------------
 def prepare_dataset():
     logger.info(f"从{Config.DATA_ROOT}加载多分类文档...")
     docs = load_multiclass_docs(Config.DATA_ROOT)
@@ -41,26 +44,58 @@ def prepare_dataset():
     if not docs:
         raise ValueError("未加载到任何文档，请检查DATA目录是否正确")
 
-    train_data = []
+    # 1. 原始样本收集
+    raw_samples = []
     for doc in docs:
         text_sample = doc.text[:512].strip() if doc.text else ""
         if not text_sample:
             continue
-        train_data.append({
+        raw_samples.append({
             "text": text_sample,
             "label": doc.metadata["category"]
         })
+    logger.info(f"原始样本总数：{len(raw_samples)}，原始类别分布：{pd.Series([d['label'] for d in raw_samples]).value_counts().to_dict()}")
 
-    label_series = pd.Series([d['label'] for d in train_data])
-    label_distribution = label_series.value_counts().to_dict()
-    logger.info(f"构造完成{len(train_data)}条样本，类别分布：{label_distribution}")
+    # 2. 分离目标类别（knowledge/solutions）和其他类别
+    target_samples = [s for s in raw_samples if s["label"] in Config.TARGET_CATEGORIES]
+    other_samples = [s for s in raw_samples if s["label"] not in Config.TARGET_CATEGORIES]
 
+    if not target_samples:
+        raise ValueError(f"未找到目标类别样本：{Config.TARGET_CATEGORIES}，请检查类别名称是否正确")
+
+    # 3. 按目标比例计算样本数量（目标类别占80%）
+    # 公式：目标样本数 / (目标样本数 + 其他样本数) = 0.8 → 其他样本数 = 目标样本数 * 0.2 / 0.8
+    target_count = len(target_samples)
+    max_other_count = int(target_count * (1 - Config.TARGET_RATIO) / Config.TARGET_RATIO)
+    # 实际其他类别样本数 = min(计算值, 原始其他类别样本数)（避免超采）
+    selected_other_count = min(max_other_count, len(other_samples))
+
+    # 4. 随机采样其他类别样本（保持随机性）
+    np.random.seed(Config.RANDOM_STATE)
+    selected_other_samples = np.random.choice(
+        other_samples,
+        size=selected_other_count,
+        replace=False  # 不重复采样
+    ).tolist() if selected_other_count > 0 else []
+
+    # 5. 合并样本并打乱顺序
+    final_samples = target_samples + selected_other_samples
+    np.random.shuffle(final_samples)  # 打乱顺序，避免类别集中
+
+    # 6. 打印调整后的类别分布
+    adjusted_distribution = pd.Series([s['label'] for s in final_samples]).value_counts().to_dict()
+    target_total = sum(adjusted_distribution.get(cat, 0) for cat in Config.TARGET_CATEGORIES)
+    total = len(final_samples)
+    logger.info(f"调整后样本总数：{total}，目标类别总占比：{target_total/total:.2%}")
+    logger.info(f"调整后类别分布：{adjusted_distribution}")
+
+    # 7. 分割训练集和测试集（保持分层抽样）
     train_texts, test_texts, train_labels, test_labels = train_test_split(
-        [d["text"] for d in train_data],
-        [d["label"] for d in train_data],
+        [d["text"] for d in final_samples],
+        [d["label"] for d in final_samples],
         test_size=Config.TEST_SIZE,
         random_state=Config.RANDOM_STATE,
-        stratify=[d["label"] for d in train_data]
+        stratify=[d["label"] for d in final_samples]  # 按调整后的分布分层
     )
 
     dataset = DatasetDict({
@@ -71,7 +106,7 @@ def prepare_dataset():
     return dataset
 
 
-# -------------------------- 模型与训练（修复参数警告） --------------------------
+# -------------------------- 模型与训练 --------------------------
 def train():
     dataset = prepare_dataset()
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_NAME)
@@ -124,26 +159,24 @@ def train():
         weight_decay=Config.WEIGHT_DECAY,
         logging_dir=Config.LOG_DIR,
         logging_steps=10,
-        evaluation_strategy="epoch",  # 4.54.1支持evaluation_strategy
+        evaluation_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="f1",
         report_to="none"
     )
 
-    # 修复FutureWarning：用processing_class替代tokenizer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset["train"],
         eval_dataset=tokenized_dataset["test"],
         tokenizer=tokenizer,
-        # processing_class=tokenizer,  # 替代原tokenizer参数
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
         compute_metrics=compute_metrics
     )
 
-    logger.info("开始训练小BERT多分类模型...（权重初始化提示为正常现象）")
+    logger.info("开始训练小BERT多分类模型...")
     trainer.train()
 
     logger.info(f"训练完成，保存模型到{Config.SAVE_DIR}...")
@@ -169,10 +202,10 @@ def test_inference():
     )
 
     test_samples = [
-        "华为S5720如何配置VLAN？",
-        "IP地址子网划分的方法是什么？",
-        "RFC 791中定义的IP协议细节",
-        "Cisco Catalyst 9300的端口配置命令"
+        "华为S5720如何配置VLAN？",  # 预期：huawei_solutions
+        "IP地址子网划分的方法是什么？",  # 预期：huawei_knowledge
+        "RFC 791中定义的IP协议细节",  # 预期：其他类别
+        "Cisco Catalyst 9300的端口配置命令"  # 预期：其他类别
     ]
 
     results = classifier(test_samples)
@@ -185,3 +218,4 @@ if __name__ == "__main__":
     Path(Config.LOG_DIR).mkdir(parents=True, exist_ok=True)
     train()
     test_inference()
+
